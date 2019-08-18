@@ -19,7 +19,11 @@
 
 /*** data ***/
 
-struct termios orig_termios;
+struct editorConfig {
+  struct termios orig_termios;
+};
+
+struct editorConfig E;
 
 /*** terminal ***/
 
@@ -35,17 +39,17 @@ void die(const char *s) {
 void disableRawMode() {
   // NOTE: we don't clear the screen here, because the error message printed by
   // die() would get erased
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
     die("tcsetattr");
 }
 
 void enableRawMode() {
   // STDIN_FILENO is a file descriptor for standard input, and is 0
   // tcgetattr() will fail if given a text file or pipe as stdin instead of the terminal
-  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) die("tcgetattr");
+  if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
   // atexit is from stdlib
   atexit(disableRawMode);
-  struct termios raw = orig_termios;
+  struct termios raw = E.orig_termios;
   // c_iflag contains for "input modes"
   // ICRNL sets whether carriage returns (CR) are translated to newlines (NL)
   //
