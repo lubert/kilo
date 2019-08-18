@@ -38,6 +38,13 @@ void enableRawMode() {
   // IEXTEN fixes ctrl-v, which on some systems waits for another character and then sends that character literally. Also fixes ctrl-o on macOS
   // ISIG controls the sending of SIGINT (ctrl-c) and SIGTSTP (ctrl-z)
   raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
+  // c_cc are "control characters", an array of bytes that control terminal settings
+  // VMIN sets the min number of bytes before read() can return, so by setting it to 0 it returns as soon as there is any input
+  raw.c_cc[VMIN] = 0;
+  // VTIME sets the max time to wait before read() returns
+  raw.c_cc[VTIME] = 1;
+
   // 2nd arg to tcsetattr are optional actions
   // TCSAFLUSH waits for pending output and discards unread output
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
@@ -46,8 +53,9 @@ void enableRawMode() {
 int main() {
   enableRawMode();
 
-  char c;
-  while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
+  while (1) {
+    char c = '\0';
+    read(STDIN_FILENO, &c, 1);
     // iscntrl, from ctype, tests whether a character is a control character
     // \r is added because we disabled output processing which automatically inserts it with newlines
     if (iscntrl(c)) {
@@ -55,6 +63,7 @@ int main() {
     } else {
       printf("%d ('%c')\r\n", c, c);
     }
+    if (c == 'q') break;
   }
 
   return 0;
