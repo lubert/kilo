@@ -1,3 +1,5 @@
+/*** includes ***/
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
@@ -7,7 +9,11 @@
 // unistd is the header that provides access to the POSIX api
 #include <unistd.h>
 
+/*** data ***/
+
 struct termios orig_termios;
+
+/*** terminal ***/
 
 void die(const char *s) {
   // Most C lib functions that fail will set the global "errno"
@@ -60,6 +66,8 @@ void enableRawMode() {
   // TCSAFLUSH waits for pending output and discards unread output
   if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
+
+/*** init ***/
 
 int main() {
   enableRawMode();
