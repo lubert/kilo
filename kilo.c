@@ -9,6 +9,14 @@
 // unistd is the header that provides access to the POSIX api
 #include <unistd.h>
 
+/*** defines ***/
+
+// 0x1f is 00011111
+// Masking the upper 3 bits effectively does what the Ctrl key does
+// ASCII seems to have been designed this way on purpose, and also
+// to toggle bit 5 to switch between lowercase and uppercase
+#define CTRL_KEY(k) ((k) & 0x1f)
+
 /*** data ***/
 
 struct termios orig_termios;
@@ -83,7 +91,7 @@ int main() {
     } else {
       printf("%d ('%c')\r\n", c, c);
     }
-    if (c == 'q') break;
+    if (c == CTRL_KEY('q')) break;
   }
 
   return 0;
