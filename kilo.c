@@ -98,6 +98,10 @@ void editorRefreshScreen() {
   // "<esc>[1J" would clear up to the cursor, and "<esc>[2J" would clear the cursor to end
   // "4" passed to write() means we're writing 4 bytes
   write(STDOUT_FILENO, "\x1b[2J", 4);
+  // "H" command positions the cursor, and takes arguments for row and column (1 indexed)
+  // "<esc>[12;40H" would place the cursor in the middle of a 80x24 size terminal
+  // The default args are 1;1
+  write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 /*** input ***/
