@@ -188,7 +188,10 @@ void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
     abAppend(ab, "~", 1);
-
+    // Instead of "J" to clear the screen, we clear the line as an optimization
+    // "K" command (erase in line) clears the line and is analogous to the J command
+    // 2 erases the whole line, 1 to the cursor left, and 0 to the right (default)
+    abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
       // Don't print on the last line to avoid scrolling the terminal
       abAppend(ab, "\r\n", 2);
@@ -206,10 +209,6 @@ void editorRefreshScreen() {
   // Escape sequences always start with the escape character
   // followed by "["
   // Escape sequences tell the terminal to do various formatting
-  // "J" clears the screen, and "2" is an argument to clear the entire screen
-  // "<esc>[1J" would clear up to the cursor, and "<esc>[2J" would clear the cursor to end
-  // "4" passed to write() means we're writing 4 bytes
-  abAppend(&ab, "\x1b[2J", 4);
   // "H" command positions the cursor, and takes arguments for row and column (1 indexed)
   // "<esc>[12;40H" would place the cursor in the middle of a 80x24 size terminal
   // The default args are 1;1
