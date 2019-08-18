@@ -93,6 +93,16 @@ char editorReadKey() {
 
 /*** output ***/
 
+/**
+ * Draws each row of the buffer of text being edited
+ */
+void editorDrawRows() {
+  int y;
+  for (y = 0; y < 24; y++) {
+    write(STDOUT_FILENO, "~\r\n", 3);
+  }
+}
+
 void editorRefreshScreen() {
   // "\x1b" is the escape character, or 27 in decimal
   // Escape sequences always start with the escape character
@@ -105,6 +115,11 @@ void editorRefreshScreen() {
   // "H" command positions the cursor, and takes arguments for row and column (1 indexed)
   // "<esc>[12;40H" would place the cursor in the middle of a 80x24 size terminal
   // The default args are 1;1
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
+  editorDrawRows();
+
+  // Repositions cursor after drawing
   write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
