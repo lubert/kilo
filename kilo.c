@@ -19,8 +19,16 @@ void enableRawMode() {
   struct termios raw = orig_termios;
   // c_iflag contains for "input modes"
   // ICRNL sets whether carriage returns (CR) are translated to newlines (NL)
+  //
   // IXON sets the sending of XOFF (ctrl-s) and XON (ctrl-q)
-  raw.c_iflag &= ~(ICRNL | IXON);
+  // BRKINT, INPCK, ISTRP, and CS8 are typically already turned off, and don't apply to modern terminals
+  // BRKNT sets whether a break condition will cause a SIGINT to be sent, like ctrl-c.
+  // INPCK enables parity checking
+  // ISTRIP causes the 8th bit to be set to 0
+  raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  // c_cflag contains flags for "control modes"
+  // CS8 is not a flag, it is a bit mask with multiple bits, which is why we use bitwise OR. This sets the character size to 8 bits per byte
+  raw.c_cflag |= (CS8);
   // c_oflag contains flags for "output modes"
   // OPOST set output processing, such as converting "\n" to "\r\n". This was for typewriters and teletypes back in the day, where the carriage first returns to the starting location and then shifts down, and this output is probably the only output flag set by default
   raw.c_oflag &= ~(OPOST);
