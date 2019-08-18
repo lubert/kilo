@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 // termios contains the definitions used by terminal i/o interfaces
 #include <termios.h>
@@ -146,24 +147,57 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+/*** append buffer ***/
+
+// C doesn't have a dynamic string class, so we write one ourselves so that we
+// can create a string buffer that we can append to
+struct abuf {
+  char *b;
+  int len;
+};
+
+#define ABUF_INIT {NULL, 0}
+
+void abAppend(struct abuf *ab, const char *s, int len) {
+  // Ask realloc() to give us a block of memory which is the size of the current
+  // string (ab->len) plus the size of the string we are appending (len).
+  // realloc() will either extend the size of the current block or free and
+  // allocate a new block somewhere else.
+  char *new = realloc(ab->b, ab->len + len);
+
+  if (new == NULL) return;
+  // memcpy() comes from string.h
+  // Copies string "s" after the end of data in the buffer
+  memcpy(&new[ab->len], s, len);
+  // Update pointers and length after the copy
+  ab->b = new;
+  ab->len += len;
+}
+
+// Destructor that deallocates the dynamic memory used by an abuf
+void abFree(struct abuf *ab) {
+  free(ab->b);
+}
+
 /*** output ***/
 
 /**
  * Draws each row of the buffer of text being edited
  */
-void editorDrawRows() {
+void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    write(STDOUT_FILENO, "~", 1);
+    abAppend(ab, "~", 1);
 
     if (y < E.screenrows - 1) {
       // Don't print on the last line to avoid scrolling the terminal
-      write(STDOUT_FILENO, "\r\n", 2);
+      abAppend(ab, "\r\n", 2);
     }
   }
 }
 
 void editorRefreshScreen() {
+  struct abuf ab = ABUF_INIT;
   // "\x1b" is the escape character, or 27 in decimal
   // Escape sequences always start with the escape character
   // followed by "["
@@ -171,16 +205,19 @@ void editorRefreshScreen() {
   // "J" clears the screen, and "2" is an argument to clear the entire screen
   // "<esc>[1J" would clear up to the cursor, and "<esc>[2J" would clear the cursor to end
   // "4" passed to write() means we're writing 4 bytes
-  write(STDOUT_FILENO, "\x1b[2J", 4);
+  abAppend(&ab, "\x1b[2J", 4);
   // "H" command positions the cursor, and takes arguments for row and column (1 indexed)
   // "<esc>[12;40H" would place the cursor in the middle of a 80x24 size terminal
   // The default args are 1;1
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[H", 3);
 
-  editorDrawRows();
+  editorDrawRows(&ab);
 
   // Repositions cursor after drawing
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[H", 3);
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+  abFree(&ab);
 }
 
 /*** input ***/
