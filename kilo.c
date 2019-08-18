@@ -198,6 +198,10 @@ void editorDrawRows(struct abuf *ab) {
 
 void editorRefreshScreen() {
   struct abuf ab = ABUF_INIT;
+  // "h" and "l" commands are "set mode" and "reset mode", used to turn off
+  // various terminal features. VT100 doesn't document ?25, which hides the
+  // cursor, so this won't work in some terminals
+  abAppend(&ab, "\x1b[?25l", 6);
   // "\x1b" is the escape character, or 27 in decimal
   // Escape sequences always start with the escape character
   // followed by "["
@@ -215,6 +219,8 @@ void editorRefreshScreen() {
 
   // Repositions cursor after drawing
   abAppend(&ab, "\x1b[H", 3);
+  // Turn cursor back on
+  abAppend(&ab, "\x1b[?25h", 6);
 
   write(STDOUT_FILENO, ab.b, ab.len);
   abFree(&ab);
