@@ -24,6 +24,8 @@ struct termios orig_termios;
 /*** terminal ***/
 
 void die(const char *s) {
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
   // Most C lib functions that fail will set the global "errno"
   // perror() looks at errno and prints a descriptive error message and also the string passed to it, which is meant to provide context
   perror(s); // from stdio
@@ -31,6 +33,8 @@ void die(const char *s) {
 }
 
 void disableRawMode() {
+  // NOTE: we don't clear the screen here, because the error message printed by
+  // die() would get erased
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
     die("tcsetattr");
 }
@@ -114,6 +118,8 @@ void editorProcessKeypress() {
 
   switch (c) {
   case CTRL_KEY('q'):
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[H", 3);
     exit(0);
     break;
   }
