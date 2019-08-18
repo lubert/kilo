@@ -1,4 +1,6 @@
 #include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 // termios contains the definitions used by terminal i/o interfaces
 #include <termios.h>
@@ -7,13 +9,22 @@
 
 struct termios orig_termios;
 
+void die(const char *s) {
+  // Most C lib functions that fail will set the global "errno"
+  // perror() looks at errno and prints a descriptive error message and also the string passed to it, which is meant to provide context
+  perror(s); // from stdio
+  exit(1); // from stdlib
+}
+
 void disableRawMode() {
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
+    die("tcsetattr");
 }
 
 void enableRawMode() {
   // STDIN_FILENO is a file descriptor for standard input, and is 0
-  tcgetattr(STDIN_FILENO, &orig_termios);
+  // tcgetattr() will fail if given a text file or pipe as stdin instead of the terminal
+  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) die("tcgetattr");
   // atexit is from stdlib
   atexit(disableRawMode);
   struct termios raw = orig_termios;
@@ -47,7 +58,7 @@ void enableRawMode() {
 
   // 2nd arg to tcsetattr are optional actions
   // TCSAFLUSH waits for pending output and discards unread output
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+  if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
 int main() {
@@ -55,7 +66,8 @@ int main() {
 
   while (1) {
     char c = '\0';
-    read(STDIN_FILENO, &c, 1);
+    // Cygwin returns EAGAIN instead of returning 0 when read() times out, so we ignore EAGAIN
+    if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
     // iscntrl, from ctype, tests whether a character is a control character
     // \r is added because we disabled output processing which automatically inserts it with newlines
     if (iscntrl(c)) {
