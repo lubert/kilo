@@ -87,6 +87,19 @@ char editorReadKey() {
   return c;
 }
 
+/*** output ***/
+
+void editorRefreshScreen() {
+  // "\x1b" is the escape character, or 27 in decimal
+  // Escape sequences always start with the escape character
+  // followed by "["
+  // Escape sequences tell the terminal to do various formatting
+  // "J" clears the screen, and "2" is an argument to clear the entire screen
+  // "<esc>[1J" would clear up to the cursor, and "<esc>[2J" would clear the cursor to end
+  // "4" passed to write() means we're writing 4 bytes
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+}
+
 /*** input ***/
 
 /**
@@ -108,6 +121,7 @@ int main() {
   enableRawMode();
 
   while (1) {
+    editorRefreshScreen();
     editorProcessKeypress();
   }
 
