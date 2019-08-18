@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 // termios contains the definitions used by terminal i/o interfaces
 #include <termios.h>
 // unistd is the header that provides access to the POSIX api
@@ -20,6 +21,8 @@
 /*** data ***/
 
 struct editorConfig {
+  int screenrows;
+  int screencols;
   struct termios orig_termios;
 };
 
@@ -95,6 +98,21 @@ char editorReadKey() {
   return c;
 }
 
+int getWindowSize(int *rows, int *cols) {
+  struct winsize ws;
+
+  // ioctl(), TIOCGWINSZ, and struct winsize all come from sys/ioctl.h
+  // On failure, ioctl() returns -1, but we also needs to check if the values
+  // are 0, which is also an error
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    return -1;
+  } else {
+    *cols = ws.ws_col;
+    *rows = ws.ws_row;
+    return 0;
+  }
+}
+
 /*** output ***/
 
 /**
@@ -102,7 +120,7 @@ char editorReadKey() {
  */
 void editorDrawRows() {
   int y;
-  for (y = 0; y < 24; y++) {
+  for (y = 0; y < E.screenrows; y++) {
     write(STDOUT_FILENO, "~\r\n", 3);
   }
 }
@@ -146,8 +164,13 @@ void editorProcessKeypress() {
 
 /*** init ***/
 
+void initEditor() {
+  if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+}
+
 int main() {
   enableRawMode();
+  initEditor();
 
   while (1) {
     editorRefreshScreen();
