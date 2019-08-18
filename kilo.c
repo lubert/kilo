@@ -98,14 +98,47 @@ char editorReadKey() {
   return c;
 }
 
+int getCursorPosition(int *rows, int *cols) {
+  char buf[32];
+  unsigned int i = 0;
+
+  // The "n" command (device status report) can be used to query the terminal
+  // for status info. The argument "6" asks for cursor position
+  // The reply is an escape sequence, such as "<esc>[24;101R"
+  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
+
+  while (i < sizeof(buf) - 1) {
+    if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
+    if (buf[i] == 'R') break;
+    i++;
+  }
+  // printf expects strings to end with a 0 byte
+  buf[i] = '\0';
+
+  // First check if responded with an escape sequence
+  if (buf[0] != '\x1b' || buf[1] != '[') return -1;
+  // Then start the string at the 3rd element, using sscanf to parse
+  if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
+
+  return 0;
+}
+
 int getWindowSize(int *rows, int *cols) {
   struct winsize ws;
 
   // ioctl(), TIOCGWINSZ, and struct winsize all come from sys/ioctl.h
   // On failure, ioctl() returns -1, but we also needs to check if the values
-  // are 0, which is also an error
+  // are 0, which is also an error. ioctl() isn't guaranteed to be able to
+  // request the window size on all systems, so we need a fallback method of
+  // moving the cursor to the bottom right and querying its position.
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-    return -1;
+    // The "C" (cursor forward) command moves the cursor to the right
+    // The "B" (cursor down) command moves the cursor down
+    // Both commands do not move past the edge of the screen, so we use a large
+    // value 999, as opposed to setting the cursor with H, which doesn't specify
+    // what to do when you try to move the cursor offscreen
+    if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
+    return getCursorPosition(rows, cols);
   } else {
     *cols = ws.ws_col;
     *rows = ws.ws_row;
