@@ -13,6 +13,8 @@
 
 /*** defines ***/
 
+
+#define KILO_VERSION "0.0.1"
 // 0x1f is 00011111
 // Masking the upper 3 bits effectively does what the Ctrl key does
 // ASCII seems to have been designed this way on purpose, and also
@@ -187,7 +189,23 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    abAppend(ab, "~", 1);
+    if (y == E.screenrows / 3) {
+      char welcome[80];
+      // snprintf() writes formatted output to a sized buffer
+      int welcomelen = snprintf(welcome, sizeof(welcome),
+        "Kilo editor -- version %s", KILO_VERSION);
+      // Truncate incase the window is too narrow
+      if (welcomelen > E.screencols) welcomelen = E.screencols;
+      int padding = (E.screencols - welcomelen) / 2;
+      if (padding) {
+        abAppend(ab, "~", 1);
+        padding--;
+      }
+      while (padding--) abAppend(ab, " ", 1);
+      abAppend(ab, welcome, welcomelen);
+    } else {
+      abAppend(ab, "~", 1);
+    }
     // Instead of "J" to clear the screen, we clear the line as an optimization
     // "K" command (erase in line) clears the line and is analogous to the J command
     // 2 erases the whole line, 1 to the cursor left, and 0 to the right (default)
