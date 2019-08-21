@@ -1,11 +1,18 @@
 /*** includes ***/
 
+// Add feature test macros for portability. These are above the includes, as the
+// headers will decide what to include based on the macros
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 // termios contains the definitions used by terminal i/o interfaces
 #include <termios.h>
 // unistd is the header that provides access to the POSIX api
@@ -35,10 +42,18 @@ enum editorKey {
 
 /*** data ***/
 
+// The typedef lets us refer to the type as "erow" instead of "struct erow"
+typedef struct erow {
+  int size;
+  char *chars;
+} erow;
+
 struct editorConfig {
   int cx, cy;
   int screenrows;
   int screencols;
+  int numrows;
+  erow row;
   struct termios orig_termios;
 };
 
@@ -206,6 +221,36 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+/*** file i/o ***/
+
+void editorOpen(char *filename) {
+  FILE *fp = fopen(filename, "r");
+  if (!fp) die("fopen");
+
+  char *line = NULL;
+  // size_t for returning size in bytes
+  // size_t when it could be a size or a (negative) error value
+  size_t linecap = 0;
+  ssize_t linelen;
+  // getline() is useful when we don't how much memory to allocate for each
+  // line, as it manages memory.
+  linelen = getline(&line, &linecap, fp);
+  if (linelen != -1) {
+    // Strip newline and carriage return before copying
+    while (linelen > 0 && (line[linelen - 1] == '\n' ||
+                           line[linelen - 1] == '\r'))
+      linelen--;
+    E.row.size = linelen;
+    // Add one to account for string termination
+    E.row.chars = malloc(linelen + 1);
+    memcpy(E.row.chars, line, linelen);
+    E.row.chars[linelen] = '\0';
+    E.numrows = 1;
+  }
+  free(line);
+  fclose(fp);
+}
+
 /*** append buffer ***/
 
 // C doesn't have a dynamic string class, so we write one ourselves so that we
@@ -246,23 +291,31 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    if (y == E.screenrows / 3) {
-      char welcome[80];
-      // snprintf() writes formatted output to a sized buffer
-      int welcomelen = snprintf(welcome, sizeof(welcome),
-        "Kilo editor -- version %s", KILO_VERSION);
-      // Truncate incase the window is too narrow
-      if (welcomelen > E.screencols) welcomelen = E.screencols;
-      int padding = (E.screencols - welcomelen) / 2;
-      if (padding) {
+    if (y >= E.numrows) {
+      // Only display the welcome if there are no lines
+      if (E.numrows == 0 && y == E.screenrows / 3) {
+        char welcome[80];
+        // snprintf() writes formatted output to a sized buffer
+        int welcomelen = snprintf(welcome, sizeof(welcome),
+          "Kilo editor -- version %s", KILO_VERSION);
+        // Truncate incase the window is too narrow
+        if (welcomelen > E.screencols) welcomelen = E.screencols;
+        int padding = (E.screencols - welcomelen) / 2;
+        if (padding) {
+          abAppend(ab, "~", 1);
+          padding--;
+        }
+        while (padding--) abAppend(ab, " ", 1);
+        abAppend(ab, welcome, welcomelen);
+      } else {
         abAppend(ab, "~", 1);
-        padding--;
       }
-      while (padding--) abAppend(ab, " ", 1);
-      abAppend(ab, welcome, welcomelen);
     } else {
-      abAppend(ab, "~", 1);
+      int len = E.row.size;
+      if (len > E.screencols) len = E.screencols;
+      abAppend(ab, E.row.chars, len);
     }
+
     // Instead of "J" to clear the screen, we clear the line as an optimization
     // "K" command (erase in line) clears the line and is analogous to the J command
     // 2 erases the whole line, 1 to the cursor left, and 0 to the right (default)
@@ -372,12 +425,18 @@ void editorProcessKeypress() {
 void initEditor() {
   E.cx = 0;
   E.cy = 0;
+  E.numrows = 0;
+
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
-int main() {
+int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
+  // Call only if a filename is passed in
+  if (argc >= 2) {
+    editorOpen(argv[1]);
+  }
 
   while (1) {
     editorRefreshScreen();
