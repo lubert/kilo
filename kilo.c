@@ -49,7 +49,8 @@ typedef struct erow {
 } erow;
 
 struct editorConfig {
-  int cx, cy;
+  int cx, cy; // position of the cursor within the text file, not the window!
+  int rowoff; // display window offset
   int screenrows;
   int screencols;
   int numrows;
@@ -293,13 +294,26 @@ void abFree(struct abuf *ab) {
 
 /*** output ***/
 
+void editorScroll() {
+  // Checks if cursor is above the visible window
+  if (E.cy < E.rowoff) {
+    E.rowoff = E.cy;
+  }
+  // Checks if cursor is below the visible window
+  if (E.cy >= E.rowoff + E.screenrows) {
+    E.rowoff = E.cy - E.screenrows + 1;
+  }
+}
+
 /**
  * Draws each row of the buffer of text being edited
  */
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    if (y >= E.numrows) {
+    // line number + offset to get row in file
+    int filerow = y + E.rowoff;
+    if (filerow >= E.numrows) {
       // Only display the welcome if there are no lines
       if (E.numrows == 0 && y == E.screenrows / 3) {
         char welcome[80];
@@ -319,9 +333,9 @@ void editorDrawRows(struct abuf *ab) {
         abAppend(ab, "~", 1);
       }
     } else {
-      int len = E.row[y].size;
+      int len = E.row[filerow].size;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, E.row[y].chars, len);
+      abAppend(ab, E.row[filerow].chars, len);
     }
 
     // Instead of "J" to clear the screen, we clear the line as an optimization
@@ -336,6 +350,8 @@ void editorDrawRows(struct abuf *ab) {
 }
 
 void editorRefreshScreen() {
+  editorScroll();
+
   struct abuf ab = ABUF_INIT;
   // "h" and "l" commands are "set mode" and "reset mode", used to turn off
   // various terminal features. VT100 doesn't document ?25, which hides the
@@ -353,7 +369,7 @@ void editorRefreshScreen() {
   editorDrawRows(&ab);
   // Move the cursor position using "H" command
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
   abAppend(&ab, buf, strlen(buf));
   // Turn cursor back on
   abAppend(&ab, "\x1b[?25h", 6);
@@ -382,7 +398,7 @@ void editorMoveCursor(int key) {
     }
     break;
   case ARROW_DOWN:
-    if (E.cy != E.screenrows - 1) {
+    if (E.cy < E.numrows) {
       E.cy++;
     }
     break;
@@ -433,6 +449,7 @@ void editorProcessKeypress() {
 void initEditor() {
   E.cx = 0;
   E.cy = 0;
+  E.rowoff = 0;
   E.numrows = 0;
   E.row = NULL;
 
