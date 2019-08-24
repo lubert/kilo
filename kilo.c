@@ -22,6 +22,7 @@
 
 
 #define KILO_VERSION "0.0.1"
+#define KILO_TAB_STOP 4
 // 0x1f is 00011111
 // Masking the upper 3 bits effectively does what the Ctrl key does
 // ASCII seems to have been designed this way on purpose, and also
@@ -45,7 +46,9 @@ enum editorKey {
 // The typedef lets us refer to the type as "erow" instead of "struct erow"
 typedef struct erow {
   int size;
+  int rsize; // size of render
   char *chars;
+  char *render;
 } erow;
 
 struct editorConfig {
@@ -225,6 +228,30 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
+void editorUpdateRow(erow *row) {
+  int tabs = 0;
+  int j;
+  // Count the number of tabs
+  for (j = 0; j < row->size; j++)
+    if (row->chars[j] == '\t') tabs++;
+  // Allocate render with enough space for the tab size and string term
+  free(row->render);
+  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+
+  int idx = 0;
+  for (j = 0; j < row->size; j++) {
+    if (row->chars[j] == '\t') {
+      // Convert tabs to spaces
+      row->render[idx++] = ' ';
+      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+    } else {
+      row->render[idx++] = row->chars[j];
+    }
+  }
+  row->render[idx] = '\0';
+  row->rsize = idx;
+}
+
 void editorAppendRow(char *s, size_t len) {
   // Increase the size of E.row by one
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
@@ -235,6 +262,11 @@ void editorAppendRow(char *s, size_t len) {
   E.row[at].chars = malloc(len + 1);
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0';
+
+  E.row[at].rsize = 0;
+  E.row[at].render = NULL;
+  editorUpdateRow(&E.row[at]);
+
   E.numrows++;
 }
 
@@ -342,11 +374,11 @@ void editorDrawRows(struct abuf *ab) {
         abAppend(ab, "~", 1);
       }
     } else {
-      int len = E.row[filerow].size - E.coloff;
+      int len = E.row[filerow].rsize - E.coloff;
       // Could be negative when scrolling past the end of the line
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+      abAppend(ab, &E.row[filerow].render[E.coloff], len);
     }
 
     // Instead of "J" to clear the screen, we clear the line as an optimization
