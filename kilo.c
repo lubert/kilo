@@ -60,6 +60,7 @@ struct editorConfig {
   int screencols;
   int numrows;
   erow *row;
+  char *filename;
   struct termios orig_termios;
 };
 
@@ -286,6 +287,10 @@ void editorAppendRow(char *s, size_t len) {
 /*** file i/o ***/
 
 void editorOpen(char *filename) {
+  free(E.filename);
+  // strdup() comes from string.h, it copies a string and allocates memory
+  E.filename = strdup(filename);
+
   FILE *fp = fopen(filename, "r");
   if (!fp) die("fopen");
 
@@ -403,11 +408,37 @@ void editorDrawRows(struct abuf *ab) {
     // "K" command (erase in line) clears the line and is analogous to the J command
     // 2 erases the whole line, 1 to the cursor left, and 0 to the right (default)
     abAppend(ab, "\x1b[K", 3);
-    if (y < E.screenrows - 1) {
-      // Don't print on the last line to avoid scrolling the terminal
-      abAppend(ab, "\r\n", 2);
+    abAppend(ab, "\r\n", 2);
+  }
+}
+
+void editorDrawStatusBar(struct abuf *ab) {
+  // The "m" command (Select graphic rendition) changes the display of text,
+  // including bold (1), underscore (4), blink (5), and inverted colors (7).
+  // An argument of 0, the default argument, clears all formatting.
+  abAppend(ab, "\x1b[7m", 4);
+  char status[80], rstatus[80];
+  int len = snprintf(status, sizeof(status), "%.20s - %d lines",
+                     E.filename ? E.filename : "[No Name]", E.numrows);
+  // Add one to E.cy, the current line, since E.cy is 0 indexed
+  int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d",
+                     E.cy + 1, E.numrows);
+  // Truncate the status bar if it exceeds the screen width
+  if (len > E.screencols) len = E.screencols;
+  abAppend(ab, status, len);
+  // Pad the rest so that the entire status bar has the same background
+  while (len < E.screencols) {
+    // To right justify the rstatus message, first print the status message and
+    // then pad the buffer until there's just enough space to print the rstatus
+    if (E.screencols - len == rlen) {
+      abAppend(ab, rstatus, rlen);
+      break;
+    } else {
+      abAppend(ab, " ", 1);
+      len++;
     }
   }
+  abAppend(ab, "\x1b[m", 3);
 }
 
 void editorRefreshScreen() {
@@ -428,6 +459,8 @@ void editorRefreshScreen() {
   abAppend(&ab, "\x1b[H", 3);
 
   editorDrawRows(&ab);
+  editorDrawStatusBar(&ab);
+
   // Move the cursor position using "H" command
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1,
@@ -546,8 +579,11 @@ void initEditor() {
   E.coloff = 0;
   E.numrows = 0;
   E.row = NULL;
+  E.filename = NULL;
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+  // Decrement so that we have room for a status bar
+  E.screenrows -= 1;
 }
 
 int main(int argc, char *argv[]) {
