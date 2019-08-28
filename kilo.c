@@ -9,12 +9,14 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 // termios contains the definitions used by terminal i/o interfaces
 #include <termios.h>
+#include <time.h>
 // unistd is the header that provides access to the POSIX api
 #include <unistd.h>
 
@@ -61,6 +63,8 @@ struct editorConfig {
   int numrows;
   erow *row;
   char *filename;
+  char statusmsg[80];
+  time_t statusmsg_time;
   struct termios orig_termios;
 };
 
@@ -439,6 +443,18 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
   }
   abAppend(ab, "\x1b[m", 3);
+  abAppend(ab, "\r\n", 2);
+}
+
+void editorDrawMessageBar(struct abuf *ab) {
+  // "K" clears the line
+  abAppend(ab, "\x1b[K", 3);
+  int msglen = strlen(E.statusmsg);
+  if (msglen > E.screencols) msglen = E.screencols;
+  // Only display if the message is less than 5 seconds old
+  // Remember, we only refresh after keypress!
+  if (msglen && time(NULL) - E.statusmsg_time < 5)
+    abAppend(ab, E.statusmsg, msglen);
 }
 
 void editorRefreshScreen() {
@@ -460,6 +476,7 @@ void editorRefreshScreen() {
 
   editorDrawRows(&ab);
   editorDrawStatusBar(&ab);
+  editorDrawMessageBar(&ab);
 
   // Move the cursor position using "H" command
   char buf[32];
@@ -471,6 +488,21 @@ void editorRefreshScreen() {
 
   write(STDOUT_FILENO, ab.b, ab.len);
   abFree(&ab);
+}
+
+// "..." makes this a variadic function
+void editorSetStatusMessage(const char *fmt, ...) {
+  // To use the variadic function, need to call va_start() and va_end() on a
+  // value of type va_list.
+  va_list ap;
+  // The last argument before "..." is passed to va_start so that it knows the
+  // address of the next argument
+  va_start(ap, fmt);
+  // To get the value, normally va_arg() is called, but vsnprintf() takes care
+  // of reading the format string and calling va_arg() for each argument
+  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+  va_end(ap);
+  E.statusmsg_time = time(NULL);
 }
 
 /*** input ***/
@@ -580,10 +612,12 @@ void initEditor() {
   E.numrows = 0;
   E.row = NULL;
   E.filename = NULL;
+  E.statusmsg[0] = '\0';
+  E.statusmsg_time = 0;
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   // Decrement so that we have room for a status bar
-  E.screenrows -= 1;
+  E.screenrows -= 2;
 }
 
 int main(int argc, char *argv[]) {
@@ -593,6 +627,8 @@ int main(int argc, char *argv[]) {
   if (argc >= 2) {
     editorOpen(argv[1]);
   }
+
+  editorSetStatusMessage("HELP: Ctrl-Q = quit");
 
   while (1) {
     editorRefreshScreen();
