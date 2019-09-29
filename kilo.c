@@ -8,6 +8,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -70,6 +71,10 @@ struct editorConfig {
 };
 
 struct editorConfig E;
+
+/*** prototypes ***/
+
+void editorSetStatusMessage(const char *fmt, ...);
 
 /*** terminal ***/
 
@@ -313,6 +318,27 @@ void editorInsertChar(int c) {
 
 /*** file i/o ***/
 
+char *editorRowsToString(int *buflen) {
+  // First get the total length of text
+  int totlen = 0;
+  int j;
+  for (j = 0; j < E.numrows; j++)
+    totlen += E.row[j].size + 1; // add 1 for newline
+  *buflen = totlen;
+
+  // Then allocate the memory and copy the rows to the buffer
+  char *buf = malloc(totlen);
+  char *p = buf;
+  for (j = 0; j < E.numrows; j++) {
+    memcpy(p, E.row[j].chars, E.row[j].size);
+    p += E.row[j].size;
+    *p = '\n'; // Append newline after copying the row
+    p++;
+  }
+  // Caller should free the memory
+  return buf;
+}
+
 void editorOpen(char *filename) {
   free(E.filename);
   // strdup() comes from string.h, it copies a string and allocates memory
@@ -336,6 +362,36 @@ void editorOpen(char *filename) {
   }
   free(line);
   fclose(fp);
+}
+
+void editorSave() {
+  if (E.filename == NULL) return;
+
+  int len;
+  char *buf = editorRowsToString(&len);
+  // 0644 is the standard permission for text files
+  // Owner gets read/write, everyone else has read-only
+  int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+  if (fd != -1) {
+    // Sets file size, truncates if it's larger, pads with 0 if it's shorter
+    if (ftruncate(fd, len) != -1) {
+      // The normal way to overwrite a file is to pass O_TRUNC to open, which
+      // truncates the entire file. However, truncating ourselves makes file
+      // save a little safer, in case that ftruncate() succeeds but write()
+      // fails. This way a file will hve most of the data it had before, and in
+      // contrast, O_TRUNC would lose all data. More advanced editors will write
+      // to a new temp and then rename the file at the end.
+      if (write(fd, buf, len) == len) {
+        close(fd);
+        free(buf);
+        editorSetStatusMessage("%d bytes written to disk", len);
+        return;
+      }
+    }
+    close(fd);
+  }
+  free(buf);
+  editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 /*** append buffer ***/
@@ -591,6 +647,10 @@ void editorProcessKeypress() {
     exit(0);
     break;
 
+  case CTRL_KEY('s'):
+    editorSave();
+    break;
+
   case HOME_KEY:
     E.cx = 0;
     break;
@@ -669,7 +729,7 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
 
-  editorSetStatusMessage("HELP: Ctrl-Q = quit");
+  editorSetStatusMessage("HELP: CTRL-S = save | Ctrl-Q = quit");
 
   while (1) {
     editorRefreshScreen();
